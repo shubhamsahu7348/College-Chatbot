@@ -36,23 +36,33 @@ def find_college_in_text(text):
     text = text.lower()
     aliases = {
         'sppu': 1, 'pune university': 1,
-        'spit': 2, 'sardar patel': 2,
+        'spit': 2, 'sardar patel': 2, 'bhartiya vidya bhavan': 2,
         'pccoe': 3, 'pimpri chinchwad': 3,
         'vesit': 4, 'vivekanand': 4,
         'sies': 5, 'met': 6, 'indira': 7,
         'thakur': 8, 'dy patil': 12,
         'raisoni': 30, 'jspm': 14,
         'modern': 15, 'imcc': 16,
-        'mim': 28, 'maharashtra institute of management': 28
+        'mim': 28, 'maharashtra institute of management': 28,
+        'bharti vidyapeeth': 10  # Bharti Vidyapeeth's Institute of Management & IT
     }
 
     for alias, cid in aliases.items():
         if alias in text:
             return next((c for c in colleges_data if c['id'] == cid), None)
 
+    # More aggressive matching: look for longer college name parts
     for c in colleges_data:
         name = c['name'].lower()
-        if name in text or any(part in text for part in name.split() if len(part) > 5):
+        # Full name match
+        if name in text:
+            return c
+        # Check if significant parts of college name are in text
+        name_parts = [part for part in name.split() if len(part) > 4]
+        if len(name_parts) >= 2 and all(part in text for part in name_parts[:2]):
+            return c
+        # Single significant word match (for shorter names)
+        if any(part in text for part in name_parts if len(part) > 6):
             return c
 
     return None
@@ -181,6 +191,7 @@ def format_colleges_html(colleges, title=None, show_limit=5, include_type=False,
         'avg_package': 'Avg Package',
         'intake': 'Intake',
         'type': 'Type',
+        'ranking': 'Ranking',
         'highest_package': 'Highest Package',
         'hostel_facility': 'Hostel',
     }
@@ -248,6 +259,7 @@ def chat():
     active_college = next((c for c in colleges_data if c['id'] == context['college_id']), None)
     relevant_colleges = get_relevant_colleges(active_college, detected_city, context.get('percentile'))
     # Direct handlers for common structured queries to improve accuracy
+    
     # 1) Top colleges list
     if re.search(r'\btop\b|\btop\s*(?:10|15)\b|top\s+colleges', lower_msg):
         top_n = 15
@@ -255,18 +267,12 @@ def chat():
         html = format_colleges_html(top, title='Top 15 MCA colleges (by ranking):', show_limit=15)
         return jsonify({'reply': html, 'buttons': ['Fees of SPIT', 'Check chances for 85 percentile']})
 
-    # 2) Specific quick-action handlers for common requested details
-    if 'fees of spit' in lower_msg or 'spit fees' in lower_msg:
-        spit = next((c for c in colleges_data if 'sardar patel institute of technology' in c.get('name','').lower()), None)
-        if spit:
-            html = format_colleges_html([spit], title='SPIT Fees and details:', show_limit=1, include_type=True)
-            return jsonify({'reply': html, 'buttons': ['Top 10 MCA Colleges', 'Check chances for 95 percentile']})
-
-    if 'admission process of pccoe' in lower_msg or 'pccoe admission' in lower_msg or 'pccoe' in lower_msg and 'admission' in lower_msg:
-        pccoe = next((c for c in colleges_data if 'pimpri chinchwad college of engineering' in c.get('name','').lower()), None)
-        if pccoe:
-            reply = f"<strong>PCCOE admission process:</strong><br>{pccoe.get('admission_process','Information not available')}"
-            return jsonify({'reply': reply, 'buttons': ['Top 10 MCA Colleges', 'Fees of SPIT']})
+    # 2) SPECIFIC COLLEGE QUERIES - Check if a college name was mentioned
+    # If specific college + any detail query (fees/intake/placement), show full details
+    if active_college and re.search(r'\b(intake|fees|fee|placement|placements|package|average package|highest package|avg package)\b', lower_msg):
+        title = f"Full Details for {active_college.get('name')}:"
+        html = format_colleges_html([active_college], title=title, show_limit=1, columns=['name', 'city', 'percentile', 'ranking', 'fees', 'intake', 'avg_package', 'highest_package'])
+        return jsonify({'reply': html, 'buttons': ['Top 15 MCA Colleges', 'Fees of SPIT', 'Check chances for 95 percentile']})
 
     # 3) College type queries: direct local answer for private/government classification
     if re.search(r'\b(private|government|govt|government department|university department|college type|type of college)\b', lower_msg):
@@ -280,19 +286,24 @@ def chat():
         html = '<div>' + '<br>'.join(sections) + '</div>'
         return jsonify({'reply': html, 'buttons': ['Top 10 MCA Colleges', 'Fees of SPIT', 'Admission Process of PCCOE']})
 
-    # 4) Intake and fees queries: direct local answer
+    # 4) Generic Intake and fees queries (no specific college)
     if re.search(r'\b(intake|fees|fee|fees and intake|intake and fees)\b', lower_msg):
         html = format_colleges_html(colleges_data, title='All colleges: Intake & Fees:', show_limit=30, columns=['name', 'city', 'intake', 'fees'])
         return jsonify({'reply': html, 'buttons': ['Top 15 MCA Colleges', 'Fees of SPIT', 'Check chances for 95 percentile']})
 
-    # 5) Greeting handler
+    # 5) Generic Placements queries (no specific college)
+    if re.search(r'\b(placement|placements|placement record|package|average package|highest package|avg package|salary|placement statistics)\b', lower_msg):
+        html = format_colleges_html(colleges_data, title='College Placements & Package Details:', show_limit=30, columns=['name', 'city', 'avg_package', 'highest_package'])
+        return jsonify({'reply': html, 'buttons': ['Top 15 MCA Colleges', 'Fees of SPIT', 'Check chances for 95 percentile']})
+
+    # 6) Greeting handler
     if re.search(r'\b(hi|hello|hey|hii|hey there|good morning|good evening)\b', lower_msg):
         return jsonify({
             'reply': '<p>Hello! I am Mikki, your MCA admission counselor. Ask me about college fees, rankings, placements, private/government colleges, or percentile chances.</p>',
             'buttons': ['Top 10 MCA Colleges', 'Fees of SPIT', 'Admission Process of PCCOE']
         })
 
-    # 6) Percentile-based matching: categorized by likelihood of admission
+    # 7) Percentile-based matching: categorized by likelihood of admission
     percentile_intent = bool(re.search(r"\b(percentile|chance|chances|my chances|check chances|i got|i have)\b", lower_msg))
     if context.get('percentile') is not None and (percentile_just_set or percentile_intent):
         p = context.get('percentile')
@@ -338,7 +349,7 @@ def chat():
         else:
             return jsonify({'reply': '<p>I could not find colleges matching that percentile in the dataset.</p>', 'buttons': ['Top 15 MCA Colleges']})
 
-    # 7) Fallback to Gemini for open-ended queries
+    # 8) Fallback to Gemini for open-ended queries
     try:
         generated_reply = generate_response_with_gemini(user_msg, relevant_colleges, detected_city, context.get('percentile'))
     except Exception:
