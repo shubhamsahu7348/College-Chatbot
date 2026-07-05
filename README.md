@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MahaCollege AI Counselor
 
 A Flask-based college admission chatbot for MCA colleges in Maharashtra. The app uses local college data and the Gemini API to answer questions about college fees, placements, intake, percentile chances, and whether a school is private or government.
@@ -140,3 +141,6 @@ python -m pip install -r requirements.txt
 # create .env with GEMINI_API_KEY
 python app.py
 ```
+=======
+# College-Chatbot
+>>>>>>> 37afb858773f29b82f9d9fe133483f0ec9e09e12
